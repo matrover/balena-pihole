@@ -12,5 +12,6 @@ COPY cont-init.d/ /etc/cont-init.d/
 COPY s6-overlay/ /etc/s6-overlay/
 
 RUN chmod +x /etc/cont-init.d/10-custom.sh
+ENV TZ Europe/Amsterdam
 
 ENV DBUS_SYSTEM_BUS_ADDRESS 'unix:path=/host/run/dbus/system_bus_socket'
