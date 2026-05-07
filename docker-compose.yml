@@ -2,61 +2,80 @@ version: "2.1"
 
 volumes:
   pihole_config: {}
-  dnsmasq_config: {}
   tailscale: {}
 
 services:
   pihole:
     build: pihole
     cap_add:
-      - SYS_TTY_CONFIG
+      # See https://github.com/pi-hole/docker-pi-hole#note-on-capabilities
+      # Required if you are using Pi-hole as your DHCP server, else not needed
       - NET_ADMIN
+      # Required if you are using Pi-hole as your NTP client to be able to set the host's system time
+      - SYS_TIME
+      # Optional, if Pi-hole should get some more processing time
+      - SYS_NICE
     volumes:
       - "pihole_config:/etc/pihole"
-      - "dnsmasq_config:/etc/dnsmasq.d"
+    environment:
+      FTLCONF_webserver_port: "8080o,[::]:8080o"
     dns:
       - "127.0.0.1"
       - "1.1.1.1"
     network_mode: host
-    labels:
-      io.balena.features.dbus: "1"
-    devices:
-      - /dev/tty0
-      - /dev/tty1
     tmpfs:
+      - /tmp
+      - /run
       - /var/log/pihole
-    environment:
-      DNSMASQ_LISTENING: all
-      PIHOLE_DNS_: 1.1.1.1;1.0.0.1
-      FONTFACE: Terminus
-      FONTSIZE: 8x14
-      WEBPASSWORD: balena
-      VIRTUAL_HOST: balena-devices.com
-      WEB_BIND_ADDR: 0.0.0.0
 
-  unbound:
-    build: unbound
-    cap_add:
-     - NET_ADMIN
-    ports:
-      - "5053:5053/tcp"
-      - "5053:5053/udp"
+  # padd:
+  #   build: padd
+  #   network_mode: host
+  #   labels:
+  #     io.balena.features.dbus: "1"
+  #   volumes:
+  #     - "pihole_config:/etc/pihole:ro"
+  #   cap_add:
+  #     - SYS_TTY_CONFIG
+  #   devices:
+  #     - /dev/tty0
+  #     - /dev/tty1
+  #   tmpfs:
+  #     - /tmp
+  #     - /run
+
+  # unbound:
+  #   build: unbound
+  #   cap_add:
+  #    - NET_ADMIN
+  #   ports:
+  #     - "5053:5053/tcp"
+  #     - "5053:5053/udp"
 
   # https://github.com/balena-labs-projects/fbcp
   # https://hub.balena.io/blocks/1792683/fbcp
-  fbcp:
-    image: bh.cr/balenalabs/fbcp/1.0.4
-    privileged: true
+  # fbcp:
+  #   image: bh.cr/balenalabs/fbcp/1.0.4
+  #   privileged: true
 
   # https://github.com/balenablocks/hostname
   # https://hub.balena.io/blocks/1918776/hostname-rpi
   hostname:
-    image: bh.cr/g_tomas_migone1/hostname-rpi/0.2.1
+    build: ./hostname
     restart: no
     labels:
       io.balena.features.supervisor-api: 1
     environment:
-      SET_HOSTNAME: pihole
+      SET_HOSTNAME: ${SET_HOSTNAME:-device-name}
+
+  # balena public device URL forwards HTTP traffic on port 80 only.
+  # This proxy keeps Pi-hole reachable on the public URL and redirects `/` to `/admin/`.
+  public-web:
+    build: ./public-web
+    restart: always
+    network_mode: host
+    depends_on:
+      - pihole
 
   # https://hub.docker.com/r/tailscale/tailscale
   # https://github.com/tailscale/tailscale/blob/main/cmd/containerboot/main.go
@@ -66,34 +85,21 @@ services:
   # https://tailscale.com/kb/1242/tailscale-serve
   # https://tailscale.com/kb/1311/tailscale-funnel
   tailscale:
-    image: tailscale/tailscale:v1.64.1@sha256:8194f391434abfdaa15afdf6e4adec510b37d9cf741881eab12d183bc161ce3f
-    restart: unless-stopped
-    environment:
-      TS_STATE_DIR: /var/lib/tailscale
-      TS_SOCKET: /var/run/tailscale/tailscaled.sock
-      TS_USERSPACE: false
-      TS_AUTH_ONCE: false
-      TS_HOSTNAME: pi-hole
-      TS_EXTRA_ARGS: --accept-dns=false --reset
+    build: ./tailscale
+    restart: always
     network_mode: host
+    privileged: true
+    labels:
+      io.balena.features.dbus: "1"
     cap_add:
       - NET_ADMIN
-      - NET_RAW
       - SYS_MODULE
-    labels:
-      io.balena.features.kernel-modules: 1
-    tmpfs:
-      - /tmp
-      - /run
     volumes:
-      - tailscale:/var/lib/tailscale
-    entrypoint:
-      - /bin/sh
-      - -c
-    command:
-      - |
-        modprobe tun || true
-        modprobe wireguard || true
-        mkdir -p /dev/net
-        [ ! -c /dev/net/tun ] && mknod /dev/net/tun c 10 200
-        /usr/local/bin/containerboot
+      - "tailscale:/var/lib/tailscale"
+    environment:
+      TZ: Europe/Amsterdam
+      TS_AUTHKEY: ${TAILSCALE_AUTH_KEY:-}
+      TS_HOSTNAME: ${TAILSCALE_HOSTNAME:-pi-hole}
+      TS_ADVERTISE_ROUTES: ${TAILSCALE_ADVERTISE_ROUTES:-}
+      TS_ACCEPT_ROUTES: ${TAILSCALE_ACCEPT_ROUTES:-false}
+      TS_STATE_DIR: /var/lib/tailscale

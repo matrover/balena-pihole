@@ -1,134 +1,129 @@
 # balena-pihole
 
-If you're looking for a way to quickly and easily get up and running with a [Pi-hole](https://pi-hole.net/) device for your home network, this is the project for you.
+Pi-hole voor balenaCloud, uitgebreid met:
 
-This project is a [balenaCloud](https://www.balena.io/cloud) stack with the following services:
+- een `hostname` service die de balena device name kan toepassen als netwerk-hostname
+- een `public-web` proxy die balena's Public Device URL naar Pi-hole `/admin/` stuurt
+- een optionele `tailscale` service voor externe toegang
 
-- [Pi-hole](https://pi-hole.net/)
-- [PADD](https://github.com/pi-hole/PADD)
-- [Unbound](https://unbound.net)
+## Services
 
-balenaCloud is a free service to remotely manage and update your Raspberry Pi through an online dashboard interface, as well as providing remote access to the Pi-hole web interface without any additional configuration.
+- `pihole`: de Pi-hole DNS- en webservice
+- `hostname`: zet de hostnaam van het device via de Supervisor API
+- `public-web`: luistert op poort `80` en redirect `/` naar `/admin/`
+- `tailscale`: optionele Tailscale sidecar
 
-## Hardware required
+## Gebruik
 
-- Raspberry Pi 2/3/4 (Note: this project will not work with the Pi Zero), balenaFin, or NanoPi Neo Air
-- 16GB Micro-SD Card (we recommend Sandisk Extreme Pro SD cards)
-- Display (any Raspberry Pi display will work for this project)
-- Micro-USB cable
-- Power supply
-- Case (optional)
+Na deployment kun je Pi-hole lokaal bereiken via:
 
-## Getting Started
+- `http://pihole.local/admin/`
+- `http://<device-ip>/admin/`
 
-You can one-click-deploy this project to balena using the button below:
+Als je in balenaCloud de Public Device URL aanzet voor het device, dan komt die
+uit op poort `80` van `public-web`, die vervolgens `/` doorstuurt naar
+`/admin/`.
 
-[![deploy button](https://balena.io/deploy.svg)](https://dashboard.balena-cloud.com/deploy?repoUrl=https://github.com/klutchell/balena-pihole&defaultDeviceType=raspberrypi3)
+## Variabelen
 
-## Manual Deployment
+| Name | Default | Purpose |
+| --- | --- | --- |
+| `FTLCONF_webserver_api_password` | `balena` | Wachtwoord voor de Pi-hole admininterface. |
+| `FTLCONF_dns_upstreams` | `1.1.1.1;1.0.0.1` | Upstream DNS servers voor Pi-hole. |
+| `SET_HOSTNAME` | `device-name` | Gebruik `device-name` voor de balena device name, `uuid` voor de korte device UUID, of een vaste hostname. |
+| `TAILSCALE_AUTH_KEY` | `` | Auth key voor de optionele Tailscale service. |
+| `TAILSCALE_HOSTNAME` | `pi-hole` | Node-naam binnen Tailscale. |
+| `TAILSCALE_ADVERTISE_ROUTES` | `` | Optionele subnet routes voor Tailscale. |
+| `TAILSCALE_ACCEPT_ROUTES` | `false` | Zet op `true` om routes van andere Tailscale nodes te accepteren. |
 
-Alternatively, deployment can be carried out by manually creating a [balenaCloud account](https://dashboard.balena-cloud.com) and application, flashing a device, downloading the project and pushing it via the [balena CLI](https://github.com/balena-io/balena-cli).
+## Push Naar Balena
 
-### Device Variables
+Deze machine gebruikt geen `git` voor deployments. Push altijd rechtstreeks
+met `balena push`.
 
-Device Variables apply to all services within the application, and can be applied fleet-wide to apply to multiple devices. If you used the one-click-deploy method, the default environment variables will already be added for you to customize as needed.
+### Doelfleet
 
-| Name           | Default           | Purpose                                                                                                                                                            |
-| -------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `TZ`           | `UTC`             | The timezone in your location. Find a [list of all timezone values here](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones).                            |
-| `WEBPASSWORD`  | `balena`          | Password for accessing the web-based interface of Pi-hole - you won’t be able to access the admin panel without defining a password here.                          |
-| `PIHOLE_DNS_`  | `1.1.1.1;1.0.0.1` | Tell Pi-hole where to forward DNS requests that aren’t blocked. We’re using Cloudflare by default but you can specify your own using IPs delimited by semi-colons. |
-| `SET_HOSTNAME` | `pihole`          | Set a custom device hostname on application start.                                                                                                                 |
+- Fleet slug: `m15/pi4-pihole`
 
-Additional supported environment variables can be found [here](https://github.com/pi-hole/docker-pi-hole#environment-variables).
+### Standaard workflow
 
-## Usage
+1. Open een terminal in de root van dit project.
+2. Push altijd met `balena push` naar `m15/pi4-pihole`.
+3. Geef altijd de wijziging mee in `--release-tag`.
+4. Controleer na elke push altijd de logs van het device.
 
-### Pi-hole
+### Login
 
-Check out our blog post on how to deploy network-wide ad-blocking with Pi-hole:
+Log in indien nodig:
 
-<https://www.balena.io/blog/deploy-network-wide-ad-blocking-with-pi-hole-and-a-raspberry-pi/>
+```powershell
+balena login
+```
 
-Once your device joins the fleet you'll need to allow some time for it to download the application and download blocklists.
+### Push commando
 
-When it's done you should be able to access the access the app at <http://pihole.local> with a default password of `balena`.
+Gebruik altijd een release-tag waarin de wijziging herkenbaar staat.
 
-On your router or DHCP server assign a static IP reservation (if possible) to your Pi-hole device, and set your clients DNS to the same IP address.
+Voorbeelden:
 
-Documentation for Pi-hole can be found at <https://docs.pi-hole.net/>
+```powershell
+balena push m15/pi4-pihole --release-tag changes hostname-device-name
+balena push m15/pi4-pihole --release-tag changes pihole-admin-public-url
+balena push m15/pi4-pihole --release-tag changes tailscale-route-fix
+```
 
-### PADD
+### Devices in de fleet bekijken
 
-Note that this project uses the [fbcp block](https://github.com/balenablocks/fbcp).
+Zoek na een push eerst het device op:
 
-The PiTFT LCD screens [from Adafruit (and others)](https://www.adafruit.com/?q=pitft) are supported.
+```powershell
+balena device list --fleet m15/pi4-pihole
+```
 
-In order to use these displays you're required to add additional configuration by setting
-the `FBCP_DISPLAY` variable within the dashboard. This variable should be set to one of the values below:
+### Logs altijd controleren na push
 
-- `adafruit-hx8357d-pitft`
-- `adafruit-ili9341-pitft`
-- `freeplaytech-waveshare32b`
-- `waveshare35b-ili9486`
-- `tontec-mz61581`
-- `waveshare-st7789vw-hat`
-- `waveshare-st7735s-hat`
-- `kedei-v63-mpi3501`
-- `dtoverlay` (requires `BALENA_HOST_CONFIG_dtoverlay` to be set)
+Controleer na elke push of de services goed opstarten:
 
-#### Configuring HDMI and TFT display sizes
+```powershell
+balena device logs <device-uuid> --tail
+```
 
-The following [Device Configuration](https://www.balena.io/docs/learn/manage/configuration/#configuration-variables)
-variables might be required for proper scaling and resolutions:
+Handige service-specifieke checks:
 
-| Name                                  | Value              |
-| ------------------------------------- | ------------------ |
-| BALENA_HOST_CONFIG_hdmi_cvt           | 480 320 60 1 0 0 0 |
-| BALENA_HOST_CONFIG_hdmi_force_hotplug | 1                  |
-| BALENA_HOST_CONFIG_hdmi_group         | 2                  |
-| BALENA_HOST_CONFIG_hdmi_mode          | 87                 |
-| BALENA_HOST_CONFIG_rotate_screen      | 1                  |
+```powershell
+balena device logs <device-uuid> --tail --service pihole
+balena device logs <device-uuid> --tail --service public-web
+balena device logs <device-uuid> --tail --service hostname
+balena device logs <device-uuid> --tail --service tailscale
+```
 
-#### FONTFACE and FONTSIZE
+Controleer in elk geval:
 
-Use the environment variables `FONTFACE` and `FONTSIZE` to control the PADD text size on your display.
+- dat `pihole` zonder fouten opstart
+- dat `public-web` draait en `/` naar `/admin/` redirect
+- dat `hostname` geen Supervisor API fout meldt
+- dat `tailscale` alleen draait als deze geconfigureerd is
 
-Valid font faces are:
+## Hostname Gedrag
 
-- VGA (sizes 8x8, 8x14, 8x16, 16x28 and 16x32)
-- Terminus (sizes 6x12, 8x14, 8x16, 10x20, 12x24, 14x28 and 16x32)
-- TerminusBold (sizes 8x14, 8x16, 10x20, 12x24, 14x28 and 16x32)
-- TerminusBoldVGA (sizes 8x14 and 8x16)
-- Fixed (sizes 8x13, 8x14, 8x15, 8x16 and 8x18)
+De `hostname` service gebruikt standaard `SET_HOSTNAME=device-name`. Daarmee
+wordt de actuele balena device name opgehaald via de Supervisor API en
+omgezet naar een geldige netwerk-hostname.
 
-From: <https://manpages.debian.org/bullseye/console-setup/console-setup.5.en.html>
+## Tailscale
 
-### Unbound
+De `tailscale` service is optioneel. Zet `TAILSCALE_AUTH_KEY` om hem te
+activeren. Je kunt daarnaast `TAILSCALE_HOSTNAME`,
+`TAILSCALE_ADVERTISE_ROUTES` en `TAILSCALE_ACCEPT_ROUTES` gebruiken.
 
-This project includes an Unbound service providing recursive DNS, but it is not used by default.
+## Referenties
 
-Read more about the reasons for using a recursive DNS with Pi-hole here:
+Deze workflow en commando's zijn afgestemd op de officiele balena CLI
+documentatie:
 
-<https://docs.pi-hole.net/guides/unbound/>
+- https://docs.balena.io/reference/balena-cli/
+- https://docs.balena.io/management/devices/
 
-Set the following environment variable in your balenaCloud Dashboard to tell Pi-hole to forward DNS requests that aren’t blocked to the local Unbound DNS resolver service.
+Pi-hole documentatie:
 
-- `PIHOLE_DNS_`: `127.0.0.1#5053;127.0.0.1#5053`
-
-**Note:** For security and footprint reasons, the Unbound container does not allow shell or terminal access via SSH or the balenaCloud console.
-
-Advanced users can change the Unbound configuration by editing [`unbound.conf`](./unbound/unbound.conf) or [`a-records.conf`](./unbound/a-records.conf) before pushing the app to balenaCloud.
-
-### Tailscale
-
-Included is a Tailscale service in order to [access your Pi-hole from anywhere](https://tailscale.com/kb/1114/pi-hole/).
-
-## Help
-
-If you're having trouble getting the project running,
-submit an issue or post on the forums at <https://forums.balena.io>.
-
-## Contributing
-
-Please open an issue or submit a pull request with any features, fixes, or changes.
+- https://docs.pi-hole.net/

@@ -1,17 +1,32 @@
 # https://hub.docker.com/r/pihole/pihole/tags
 FROM pihole/pihole:latest
 
-ENV DEBIAN_FRONTEND noninteractive
+# https://wiki.alpinelinux.org/wiki/Fonts
+# hadolint ignore=DL3018
+RUN apk add --no-cache bash
 
-# hadolint ignore=DL3008
-RUN apt-get update && \
-	apt-get install --no-install-recommends -y console-setup dbus netcat && \
-	apt-get clean && rm -rf /var/lib/apt/lists/*
+# Avoid port conflicts in 53 with the resin-dns interface
+# https://docs.pi-hole.net/ftldns/interfaces/
+RUN mkdir -p /etc/dnsmasq.d && \
+    echo "bind-interfaces" >/etc/dnsmasq.d/90-resin-dns.conf && \
+    echo "except-interface=resin-dns" >>/etc/dnsmasq.d/90-resin-dns.conf
 
-COPY cont-init.d/ /etc/cont-init.d/
-COPY s6-overlay/ /etc/s6-overlay/
+# enable inclusion of dnsmasq.d conf files
+# https://github.com/pi-hole/FTL/pull/1734
+ENV FTLCONF_misc_etc_dnsmasq_d='true'
 
-RUN chmod +x /etc/cont-init.d/10-custom.sh
+COPY balena-init.sh /
+
+RUN chmod +x /balena-init.sh
+
+ENTRYPOINT [ "/balena-init.sh" ]
+
+# https://docs.pi-hole.net/docker/configuration/?h=pihole+ftl#configuration
+# https://docs.pi-hole.net/docker/upgrading/v5-v6/?h=web_bind_addr#removed-variables
+ENV FTLCONF_dns_listeningMode='all'
+ENV FTLCONF_dns_upstreams='1.1.1.1;1.0.0.1'
+ENV FTLCONF_webserver_api_password='balena'
+ENV FTLCONF_misc_delay_startup: '120'
 ENV TZ Europe/Amsterdam
-
-ENV DBUS_SYSTEM_BUS_ADDRESS 'unix:path=/host/run/dbus/system_bus_socket'
+# https://github.com/pi-hole/FTL/blob/ac500d5f1ff192d087209d6e9b955515c8f35434/test/pihole.toml#L627-L660
+# ENV FTLCONF_webserver_port='80o,443os,[::]:80o,[::]:443os'
